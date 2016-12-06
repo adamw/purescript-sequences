@@ -7,7 +7,7 @@ import Data.Function (on)
 import Data.Foldable (class Foldable, intercalate, foldr, foldMap)
 import Data.Maybe (Maybe(Nothing, Just))
 import Data.Monoid (class Monoid, mempty)
-import Data.Monoid.Additive (Additive(Additive), runAdditive)
+import Data.Monoid.Additive (Additive(Additive))
 import Control.Alt (class Alt, (<|>))
 import Control.Plus (class Plus, empty)
 import Control.Alternative (class Alternative)
@@ -20,6 +20,7 @@ import Test.QuickCheck.Gen (Gen())
 import Data.Sequence as S
 import Data.Sequence.NonEmpty as NES
 import Data.Sequence.Ordered as OS
+import Data.Newtype (unwrap)
 
 -----------------------------
 --- newtype wrappers
@@ -139,7 +140,7 @@ instance arbitraryArbOrdSeq :: (Ord a, Arbitrary a) => Arbitrary (ArbOSeq a) whe
 --------------------------
 
 foldableSize :: forall f a. (Foldable f) => f a -> Int
-foldableSize = runAdditive <<< foldMap (const (Additive 1))
+foldableSize = unwrap <<< foldMap (const (Additive 1))
 
 check1 :: forall e p. (Testable p) => p -> QC e Unit
 check1 = quickCheck' 1

@@ -16,7 +16,7 @@ module Data.Sequence.Internal
 
 import Prelude
 
-import Data.Array.Partial (unsafeIndex)
+import Data.Array (unsafeIndex)
 import Data.Foldable (class Foldable, foldl, intercalate)
 import Data.Lazy (Lazy(), force)
 import Data.Monoid (class Monoid, mempty)

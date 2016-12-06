@@ -48,11 +48,12 @@ import Data.Foldable (class Foldable, foldl, foldMap, foldr)
 import Data.Lazy (force)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Monoid (class Monoid)
-import Data.Monoid.Additive (Additive(Additive), runAdditive)
+import Data.Monoid.Additive (Additive(Additive))
 import Data.Tuple (Tuple(Tuple), fst, snd)
 import Data.Unfoldable (class Unfoldable)
 import Partial.Unsafe (unsafePartial)
 import Unsafe.Coerce (unsafeCoerce)
+import Data.Newtype (unwrap)
 
 import Data.Sequence.Internal
   (Elem(Elem), Key(Key), getElem, liftElem, lift2Elem, mapGetElem, measure,
@@ -76,7 +77,7 @@ empty :: forall a. OrdSeq a
 empty = OrdSeq FT.Empty
 
 instance eqOrdSeq :: (Eq a) => Eq (OrdSeq a) where
-  eq (OrdSeq xs) (OrdSeq ys) = FT.eqFingerTree xs ys
+  eq (OrdSeq xs) (OrdSeq ys) = unsafePartial $ FT.eqFingerTree xs ys
 
 instance showOrdSeq :: (Show a) => Show (OrdSeq a) where
   show xs = "(OrdSeq.fromFoldable [" <> strJoin "," (toUnfoldable xs) <> "])"
@@ -99,7 +100,7 @@ null _ = false
 
 -- | O(n). Return the length of the sequence.
 length :: forall a. OrdSeq a -> Int
-length = runAdditive <<< foldMap (const (Additive 1))
+length = unwrap <<< foldMap (const (Additive 1))
 
 -- | O(log(n)). Split an ordered sequence into two halves. The first element
 -- | of the returned tuple contains all elements which compared less than or
@@ -107,27 +108,27 @@ length = runAdditive <<< foldMap (const (Additive 1))
 partition :: forall a. (Ord a) => a -> OrdSeq a -> Tuple (OrdSeq a) (OrdSeq a)
 partition k (OrdSeq xs) = Tuple (OrdSeq (force l)) (OrdSeq (force r))
   where
-  t = FT.split (\y -> y >= Key k) xs
+  t = unsafePartial $ FT.split (\y -> y >= Key k) xs
   l = fst t
   r = snd t
 
 -- | O(log(n)). Insert the given value into the correct place in the sequence.
 insert :: forall a. (Ord a) => a -> OrdSeq a -> OrdSeq a
-insert x (OrdSeq xs) = OrdSeq (FT.append (force l) (FT.cons (Elem x) (force r)))
+insert x (OrdSeq xs) = OrdSeq (unsafePartial $ FT.append (force l) (FT.cons (Elem x) (force r)))
   where
-  t = FT.split (\y -> y >= Key x) xs
+  t = unsafePartial $ FT.split (\y -> y >= Key x) xs
   l = fst t
   r = snd t
 
 -- | O(log(n)). Delete all elements from the sequence which compare EQ to the
 -- | given value.
 deleteAll :: forall a. (Ord a) => a -> OrdSeq a -> OrdSeq a
-deleteAll x (OrdSeq xs) = OrdSeq (l <> r')
+deleteAll x (OrdSeq xs) = OrdSeq (unsafePartial $ l <> r')
   where
-  t = FT.split (\y -> y >= Key x) xs
+  t = unsafePartial $ FT.split (\y -> y >= Key x) xs
   l = force (fst t)
   r = force (snd t)
-  t' = FT.split (\y -> y > Key x) r
+  t' = unsafePartial $ FT.split (\y -> y > Key x) r
   r' = force (snd t')
 
 -- | O(m*log(n/m)), where m and n are the lengths of the longer and shorter
@@ -137,13 +138,13 @@ merge :: forall a. (Ord a) => OrdSeq a -> OrdSeq a -> OrdSeq a
 merge (OrdSeq xs) (OrdSeq ys) = OrdSeq (go xs ys)
   where
   go as bs =
-    case FT.viewL bs of
+    case (unsafePartial $ FT.viewL bs) of
       FT.NilL        -> as
       FT.ConsL a bs' ->
-        let t = FT.split (\c -> c > measure a) as
+        let t = unsafePartial $ FT.split (\c -> c > measure a) as
             l = force (fst t)
             r = force (snd t)
-        in l <> (FT.cons a (go (force bs') r))
+        in unsafePartial $ l <> (FT.cons a (go (force bs') r))
 
 -- | O(n*log(n)), where n is the length of the longer sequence. Create a new
 -- | sequence containing only elements which are common to both sequences.
@@ -151,7 +152,7 @@ intersection :: forall a. (Ord a) => OrdSeq a -> OrdSeq a -> OrdSeq a
 intersection (OrdSeq xs) (OrdSeq ys) = OrdSeq (go xs ys)
   where
   go as bs =
-    case Tuple (FT.viewL as) (FT.viewL bs) of
+    case Tuple (unsafePartial $ FT.viewL as) (unsafePartial $ FT.viewL bs) of
       Tuple FT.NilL _ -> FT.Empty
       Tuple _ FT.NilL -> FT.Empty
       Tuple (FT.ConsL a as') (FT.ConsL b bs') ->

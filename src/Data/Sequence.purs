@@ -72,7 +72,7 @@ import Data.Foldable (class Foldable, foldl, foldMap, foldr)
 import Data.Lazy (Lazy(), force)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Monoid (class Monoid)
-import Data.Monoid.Additive (Additive(Additive), runAdditive)
+import Data.Monoid.Additive (Additive(Additive))
 import Data.Profunctor.Strong ((***))
 import Data.Traversable (class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple), fst, snd)
@@ -83,6 +83,8 @@ import Data.Sequence.Internal (Elem(Elem), mapGetElem, getElem, liftElem,
                                lift2Elem, measure, strJoin)
 import Data.FingerTree as FT
 import Data.Sequence.Ordered as Ordered
+import Data.Newtype (unwrap)
+import Partial.Unsafe (unsafePartial)
 
 -- TODO: Optimise Apply instance (see Hackage)
 -- TODO: adjust might be suboptimal, see Data.Sequence on Hackage
@@ -97,10 +99,10 @@ mapSeq :: forall f a. (Functor f) => f (SeqInner a) -> f (Seq a)
 mapSeq = unsafeCoerce
 
 instance ordSeq :: (Ord a) => Ord (Seq a) where
-  compare (Seq xs) (Seq ys) = FT.compareFingerTree xs ys
+  compare (Seq xs) (Seq ys) = unsafePartial $ FT.compareFingerTree xs ys
 
 instance eqSeq :: (Eq a) => Eq (Seq a) where
-  eq (Seq xs) (Seq ys) = FT.eqFingerTree xs ys
+  eq (Seq xs) (Seq ys) = unsafePartial $ FT.eqFingerTree xs ys
 
 instance showSeq :: (Show a) => Show (Seq a) where
   show xs = "(Seq.fromFoldable [" <> strJoin "," (toUnfoldable xs) <> "])"
@@ -170,7 +172,7 @@ snoc (Seq xs) x = Seq (FT.snoc xs (Elem x))
 -- | O(log(min(n1,n2)), where n1 and n2 are the lengths of the arguments. Join
 -- | two Seqs together.
 append :: forall a. Seq a -> Seq a -> Seq a
-append (Seq a) (Seq b) = Seq (FT.append a b)
+append (Seq a) (Seq b) = Seq (unsafePartial $ FT.append a b)
 
 -- | O(m*log(n)), where m is the number of sequences, and n is the length of
 -- | the longest sequence within it. Flatten a sequence of sequences.
@@ -185,7 +187,9 @@ concatMap f = concat <<< map f
 
 -- | O(1). The number of elements in the sequence.
 length :: forall a. Seq a -> Int
-length (Seq xs) = runAdditive (measure xs)
+length (Seq xs) = unwrap m where
+  m :: Additive Int
+  m = measure xs
 
 -- | O(1). True if the sequence has no elements, false otherwise.
 null :: forall a. Seq a -> Boolean
@@ -197,7 +201,7 @@ null _              = false
 -- | return Nothing.
 uncons :: forall a. Seq a -> Maybe (Tuple a (Seq a))
 uncons (Seq xs) =
-  case FT.viewL xs of
+  case unsafePartial $ FT.viewL xs of
       FT.NilL       -> Nothing
       FT.ConsL y ys -> Just (Tuple (getElem y) (Seq (force ys)))
 
@@ -206,14 +210,14 @@ uncons (Seq xs) =
 -- | return Nothing.
 unsnoc :: forall a. Seq a -> Maybe (Tuple (Seq a) a)
 unsnoc (Seq xs) =
-  case FT.viewR xs of
+  case unsafePartial $ FT.viewR xs of
       FT.NilR       -> Nothing
       FT.SnocR ys y -> Just (Tuple (Seq (force ys)) (getElem y))
 
 splitAt' :: forall a. Int -> Seq a -> Tuple (Lazy (Seq a)) (Lazy (Seq a))
 splitAt' i (Seq xs) = seqify tuple
   where
-  tuple = FT.split (\n -> i < runAdditive n) xs
+  tuple = unsafePartial $ FT.split (\n -> i < unwrap n) xs
 
   seqify :: forall f. (Functor f) =>
     Tuple (f (SeqInner a)) (f (SeqInner a)) -> Tuple (f (Seq a)) (f (Seq a))
@@ -255,7 +259,7 @@ index i xs = if inBounds i xs then Just (unsafeIndex i xs) else Nothing
 -- | sequence.
 unsafeIndex :: forall a. Int -> Seq a -> a
 unsafeIndex i (Seq xs) =
-  case FT.splitTree (\n -> i < runAdditive n) (Additive 0) xs of
+  case unsafePartial $ FT.splitTree (\n -> i < unwrap n) (Additive 0) xs of
     FT.LazySplit _ x _ -> getElem x
 
 -- | O(log(min(i,n-i))). Adjust the element at the specified index by
@@ -266,7 +270,7 @@ adjust f i xs = if inBounds i xs then unsafeAdjust f i xs else xs
 
 unsafeAdjust :: forall a. (a -> a) -> Int -> Seq a -> Seq a
 unsafeAdjust f i (Seq xs) =
-  case FT.splitTree (\n -> i < runAdditive n) (Additive 0) xs of
+  case unsafePartial $ FT.splitTree (\n -> i < unwrap n) (Additive 0) xs of
     FT.LazySplit l x r ->
       let
         g :: Elem a -> Elem a
@@ -274,7 +278,7 @@ unsafeAdjust f i (Seq xs) =
 
         l' = FT.snoc (force l) (g x)
       in
-        Seq (FT.append l' (force r))
+        Seq (unsafePartial $ FT.append l' (force r))
 
 -- | O(log(min(i,n-i))). Replace the element at the specified index with
 -- | a new element. If the index is out of range, the sequence is returned
@@ -295,21 +299,21 @@ map f (Seq xs) = Seq (g <$> xs)
 
 -- | O(1). Get the first element of a Seq. Equivalent to `index 0`.
 head :: forall a. Seq a -> Maybe a
-head (Seq xs) = mapGetElem (FT.head xs)
+head (Seq xs) = mapGetElem (unsafePartial $ FT.head xs)
 
 -- | O(1). Get all but the first element of a Seq. Equivalent to `drop 1`.
 tail :: forall a. Seq a -> Maybe (Seq a)
-tail (Seq xs) = mapSeq (FT.tail xs)
+tail (Seq xs) = mapSeq (unsafePartial $ FT.tail xs)
 
 -- | O(1). Get all but the last element of a Seq. Equivalent to `\seq -> take
 -- | (length seq - 1)`.
 init :: forall a. Seq a -> Maybe (Seq a)
-init (Seq xs) = mapSeq (FT.init xs)
+init (Seq xs) = mapSeq (unsafePartial $ FT.init xs)
 
 -- | O(1). Get the last element of a Seq. Equivalent to
 -- | `\seq -> index (length seq - 1) seq`.
 last :: forall a. Seq a -> Maybe a
-last (Seq xs) = mapGetElem (FT.last xs)
+last (Seq xs) = mapGetElem (unsafePartial $ FT.last xs)
 
 -- | Probably O(n*log(n)), but depends on the Foldable instance. Turn any
 -- | `Foldable` into a `Seq`.
@@ -319,7 +323,7 @@ fromFoldable = foldr cons empty
 -- | Probably O(n), but depends on the Unfoldable instance. Turn a `Seq` into
 -- | any `Unfoldable`.
 toUnfoldable :: forall f a. (Functor f, Unfoldable f) => Seq a -> f a
-toUnfoldable (Seq xs) = mapGetElem (FT.unfoldLeft xs)
+toUnfoldable (Seq xs) = mapGetElem (unsafePartial $ FT.unfoldLeft xs)
 
 -- | O(n). Create a new Seq which contains only those elements of the input
 -- | Seq which satisfy the given predicate.

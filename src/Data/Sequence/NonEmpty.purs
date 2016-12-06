@@ -170,8 +170,8 @@ replace x = adjust (const x)
 toUnfoldable :: forall f a. (Functor f, Unfoldable f) => Seq a -> f a
 toUnfoldable = S.toUnfoldable <<< toPlain
 
-fromPlain :: forall a. Partial => S.Seq a -> Seq a
-fromPlain = S.uncons >>> fromJust >>> uncurry Seq
+fromPlain :: forall a. S.Seq a -> Seq a
+fromPlain = unsafePartial (S.uncons >>> fromJust >>> uncurry Seq)
 
 instance showSeq :: (Show a) => Show (Seq a) where
   show (Seq x xs) = "(Seq " <> show x <> " " <> show xs <> ")"
